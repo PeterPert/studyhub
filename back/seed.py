@@ -10,7 +10,7 @@ load_dotenv()
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from main import Base, User, Group, StudentGroup, Schedule
+from main import Base, User, Group, StudentGroup, Schedule, Grade, Notification
 
 SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL")
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
@@ -118,8 +118,28 @@ def seed():
                     classroom=classroom,
                 ))
 
+        # --- Примеры оценок ---
+        grade_entries = [
+            (students[0].id, prepods[0].id, "Математика", 5, "Отличная работа"),
+            (students[0].id, prepods[2].id, "Программирование", 4, None),
+            (students[1].id, prepods[0].id, "Математика", 4, None),
+            (students[2].id, prepods[2].id, "Программирование", 5, "Молодец!"),
+        ]
+        for student_id, prepod_id, subject, value, comment in grade_entries:
+            existing_grade = db.query(Grade).filter(
+                Grade.student_id == student_id,
+                Grade.subject == subject,
+                Grade.prepod_id == prepod_id,
+            ).first()
+            if not existing_grade:
+                g = Grade(student_id=student_id, prepod_id=prepod_id, subject=subject, value=value, comment=comment)
+                db.add(g)
+                db.flush()
+                msg = f"Поставлена оценка {value} по предмету «{subject}»"
+                db.add(Notification(student_id=student_id, grade_id=g.id, message=msg, is_read=0))
+
         db.commit()
-        print("✓ Данные успешно добавлены")
+        print("✓ Данные успешно добавлены (включая примеры оценок)")
         print("  Группы: ИУ1-22Б, ИУ1-21Б, БМТ2-23Б")
         print("  Студенты: student1/123, student2/123, student3/123")
         print("  Преподаватели: prepod1/123, prepod2/123, prepod3/123")

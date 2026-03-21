@@ -1,8 +1,11 @@
+from pathlib import Path
+
 from fastapi import FastAPI, Depends, HTTPException, status, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
-from sqlalchemy import create_engine, Column, Integer, String, Date, Time, ForeignKey
-from sqlalchemy.orm import sessionmaker, declarative_base, Session
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy import create_engine, Column, Integer, String, Date, Time, DateTime, ForeignKey
+from sqlalchemy.orm import sessionmaker, declarative_base, Session, relationship
 from pydantic import BaseModel
 from typing import List, Optional
 import datetime
@@ -55,6 +58,27 @@ class Schedule(Base):
     prepod_id = Column(Integer, ForeignKey("users.id"))
     classroom = Column(String)
 
+
+class Grade(Base):
+    __tablename__ = "grades"
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("users.id"))
+    prepod_id = Column(Integer, ForeignKey("users.id"))
+    subject = Column(String)
+    value = Column(Integer)  # 2-5
+    comment = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("users.id"))
+    grade_id = Column(Integer, ForeignKey("grades.id"))
+    message = Column(String)
+    is_read = Column(Integer, default=0)  # 0=unread, 1=read
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
 # Создаем таблицы (если их нет)
 Base.metadata.create_all(bind=engine)
 
@@ -97,6 +121,44 @@ class ScheduleUpdate(BaseModel):
     prepod_id: Optional[int] = None
     classroom: Optional[str] = None
 
+
+class GradeCreate(BaseModel):
+    student_id: int
+    subject: str
+    value: int  # 2-5
+    comment: Optional[str] = None
+
+
+class GradeResponse(BaseModel):
+    id: int
+    student_id: int
+    prepod_id: int
+    subject: str
+    value: int
+    comment: Optional[str] = None
+    created_at: datetime.datetime
+    prepod_name: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class StudentOption(BaseModel):
+    id: int
+    name: str
+    group_name: str
+
+
+class NotificationResponse(BaseModel):
+    id: int
+    grade_id: int
+    message: str
+    is_read: int
+    created_at: datetime.datetime
+
+    class Config:
+        from_attributes = True
+
 # --- 4. FASTAPI ПРИЛОЖЕНИЕ И РУЧКИ ---
 
 app = FastAPI(title="Schedule API")
@@ -127,9 +189,32 @@ def get_admin(admin_id: Optional[int] = Header(None, alias="X-Admin-Id"), db: Se
         raise HTTPException(status_code=403, detail="Доступ запрещён. Требуются права администратора.")
     return user
 
+
+# Проверка прав преподавателя (X-User-Id)
+def get_prepod(user_id: Optional[int] = Header(None, alias="X-User-Id"), db: Session = Depends(get_db)):
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Требуется заголовок X-User-Id")
+    user = db.query(User).filter(User.id == user_id, User.role == "prepod").first()
+    if not user:
+        raise HTTPException(status_code=403, detail="Доступ только для преподавателей.")
+    return user
+
+
+# Проверка что студент смотрит только свои данные (X-User-Id должен совпадать с student_id)
+def verify_student(student_id: int, user_id: Optional[int] = Header(None, alias="X-User-Id"), db: Session = Depends(get_db)):
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Требуется заголовок X-User-Id")
+    user = db.query(User).filter(User.id == user_id, User.role == "student").first()
+    if not user or user.id != student_id:
+        raise HTTPException(status_code=403, detail="Доступ запрещён.")
+    return user
+
+STATIC_DIR = Path(__file__).parent / "static"
+app.mount("/app", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
+
 @app.get("/")
 def root():
-    return RedirectResponse(url="/docs")
+    return RedirectResponse(url="/app/")
 
 @app.post("/api/login", response_model=LoginResponse)
 def login(user_data: LoginRequest, db: Session = Depends(get_db)):
@@ -182,6 +267,108 @@ def get_student_schedule(
     )
     result = [s for s in schedules if s.date.weekday() == day_of_week]
     return sorted(result, key=lambda s: s.time)
+
+
+# --- ОЦЕНКИ И УВЕДОМЛЕНИЯ ---
+
+@app.get("/api/prepod/{prepod_id}/students", response_model=List[StudentOption])
+def get_prepod_students(prepod_id: int, db: Session = Depends(get_db), prepod: User = Depends(get_prepod)):
+    """Список студентов в группах, которые ведёт преподаватель"""
+    if prepod.id != prepod_id:
+        raise HTTPException(status_code=403, detail="Доступ запрещён")
+    # Группы преподавателя из расписания
+    group_ids = db.query(Schedule.group_id).filter(Schedule.prepod_id == prepod_id).distinct().all()
+    group_ids = [g[0] for g in group_ids if g[0]]
+    if not group_ids:
+        return []
+    # Студенты в этих группах
+    links = db.query(StudentGroup, User, Group).join(User, StudentGroup.student_id == User.id).join(
+        Group, StudentGroup.group_id == Group.id
+    ).filter(StudentGroup.group_id.in_(group_ids)).all()
+    seen = set()
+    result = []
+    for sg, u, g in links:
+        if u.id not in seen:
+            seen.add(u.id)
+            result.append(StudentOption(id=u.id, name=u.name, group_name=g.name_group))
+    return sorted(result, key=lambda x: (x.group_name, x.name))
+
+
+@app.post("/api/prepod/grades", response_model=GradeResponse)
+def create_grade(data: GradeCreate, db: Session = Depends(get_db), prepod: User = Depends(get_prepod)):
+    """Преподаватель выставляет оценку студенту"""
+    if not 2 <= data.value <= 5:
+        raise HTTPException(status_code=400, detail="Оценка должна быть от 2 до 5")
+    student = db.query(User).filter(User.id == data.student_id, User.role == "student").first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Студент не найден")
+    grade = Grade(student_id=data.student_id, prepod_id=prepod.id, subject=data.subject, value=data.value, comment=data.comment)
+    db.add(grade)
+    db.flush()
+    msg = f"Поставлена оценка {data.value} по предмету «{data.subject}»"
+    notif = Notification(student_id=data.student_id, grade_id=grade.id, message=msg)
+    db.add(notif)
+    db.commit()
+    db.refresh(grade)
+    return grade
+
+
+@app.get("/api/student/{student_id}/grades", response_model=List[GradeResponse])
+def get_student_grades(student_id: int, db: Session = Depends(get_db), _: User = Depends(verify_student)):
+    """Студент получает свои оценки"""
+    grades = db.query(Grade, User).join(User, Grade.prepod_id == User.id).filter(
+        Grade.student_id == student_id
+    ).order_by(Grade.created_at.desc()).all()
+    return [
+        GradeResponse(
+            id=g.id, student_id=g.student_id, prepod_id=g.prepod_id, subject=g.subject,
+            value=g.value, comment=g.comment, created_at=g.created_at, prepod_name=u.name
+        )
+        for g, u in grades
+    ]
+
+
+@app.get("/api/student/{student_id}/notifications", response_model=List[NotificationResponse])
+def get_student_notifications(
+    student_id: int,
+    unread_only: bool = False,
+    db: Session = Depends(get_db),
+    _: User = Depends(verify_student),
+):
+    """Уведомления студента"""
+    q = db.query(Notification).filter(Notification.student_id == student_id)
+    if unread_only:
+        q = q.filter(Notification.is_read == 0)
+    notifs = q.order_by(Notification.created_at.desc()).limit(50).all()
+    return notifs
+
+
+@app.get("/api/student/{student_id}/notifications/unread-count")
+def get_unread_count(student_id: int, db: Session = Depends(get_db), _: User = Depends(verify_student)):
+    """Количество непрочитанных уведомлений"""
+    count = db.query(Notification).filter(Notification.student_id == student_id, Notification.is_read == 0).count()
+    return {"count": count}
+
+
+@app.patch("/api/student/{student_id}/notifications/{notif_id}/read")
+def mark_notification_read(
+    student_id: int, notif_id: int, db: Session = Depends(get_db), _: User = Depends(verify_student)
+):
+    notif = db.query(Notification).filter(Notification.id == notif_id, Notification.student_id == student_id).first()
+    if not notif:
+        raise HTTPException(status_code=404, detail="Уведомление не найдено")
+    notif.is_read = 1
+    db.commit()
+    return {"ok": True}
+
+
+@app.patch("/api/student/{student_id}/notifications/read-all")
+def mark_all_notifications_read(student_id: int, db: Session = Depends(get_db), _: User = Depends(verify_student)):
+    db.query(Notification).filter(Notification.student_id == student_id, Notification.is_read == 0).update(
+        {Notification.is_read: 1}
+    )
+    db.commit()
+    return {"ok": True}
 
 
 # --- АДМИНКА: добавление и изменение расписания ---
