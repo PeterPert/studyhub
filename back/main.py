@@ -4,8 +4,20 @@ from fastapi import FastAPI, Depends, HTTPException, status, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import create_engine, Column, Integer, String, Date, Time, DateTime, ForeignKey
-from sqlalchemy.orm import sessionmaker, declarative_base, Session, relationship
+from sqlalchemy import (
+    create_engine,
+    Column,
+    Integer,
+    String,
+    Date,
+    Time,
+    DateTime,
+    ForeignKey,
+    Text,
+    text,
+    UniqueConstraint,
+)
+from sqlalchemy.orm import sessionmaker, declarative_base, Session
 from pydantic import BaseModel
 from typing import List, Optional
 import datetime
@@ -74,13 +86,62 @@ class Notification(Base):
     __tablename__ = "notifications"
     id = Column(Integer, primary_key=True, index=True)
     student_id = Column(Integer, ForeignKey("users.id"))
-    grade_id = Column(Integer, ForeignKey("grades.id"))
+    grade_id = Column(Integer, ForeignKey("grades.id"), nullable=True)
+    assignment_id = Column(Integer, ForeignKey("assignments.id"), nullable=True)
     message = Column(String)
     is_read = Column(Integer, default=0)  # 0=unread, 1=read
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
+
+class Assignment(Base):
+    """Задание от преподавателя для группы."""
+    __tablename__ = "assignments"
+    id = Column(Integer, primary_key=True, index=True)
+    prepod_id = Column(Integer, ForeignKey("users.id"))
+    group_id = Column(Integer, ForeignKey("groups.id"))
+    subject = Column(String)
+    description = Column(Text)
+    published = Column(Integer, default=1)  # 1 = опубликовано
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class AssignmentStudentState(Base):
+    """Статус студента по заданию: в процессе / сдано; засчитано преподавателем."""
+    __tablename__ = "assignment_student_states"
+    id = Column(Integer, primary_key=True, index=True)
+    assignment_id = Column(Integer, ForeignKey("assignments.id", ondelete="CASCADE"))
+    student_id = Column(Integer, ForeignKey("users.id"))
+    # student_status: "in_progress" | "submitted"
+    student_status = Column(String, default="in_progress")
+    # teacher_accepted: 1 = засчитано, иначе NULL/0 — задание ещё в ленте / на проверке
+    teacher_accepted = Column(Integer, nullable=True, default=None)  # 1 accepted
+
+    __table_args__ = (UniqueConstraint("assignment_id", "student_id", name="uq_assignment_student"),)
+
+
 # Создаем таблицы (если их нет)
 Base.metadata.create_all(bind=engine)
+
+
+def _migrate_postgres_notifications():
+    """Существующие БД: сделать grade_id nullable и добавить assignment_id."""
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE notifications ALTER COLUMN grade_id DROP NOT NULL"))
+    except Exception:
+        pass
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS assignment_id INTEGER REFERENCES assignments(id)"
+                )
+            )
+    except Exception:
+        pass
+
+
+_migrate_postgres_notifications()
 
 # --- 3. PYDANTIC СХЕМЫ (Для валидации входящих/исходящих данных) ---
 
@@ -149,15 +210,71 @@ class StudentOption(BaseModel):
     group_name: str
 
 
+class StudentGroupNameResponse(BaseModel):
+    group_name: str
+
+
 class NotificationResponse(BaseModel):
     id: int
-    grade_id: int
+    grade_id: Optional[int] = None
+    assignment_id: Optional[int] = None
     message: str
     is_read: int
     created_at: datetime.datetime
 
     class Config:
         from_attributes = True
+
+
+class GroupOption(BaseModel):
+    id: int
+    name: str
+
+
+class AssignmentMetaResponse(BaseModel):
+    subjects: List[str]
+    groups: List[GroupOption]
+
+
+class AssignmentCreate(BaseModel):
+    subject: str
+    description: str
+    group_id: int
+
+
+class AssignmentStudentStatusRow(BaseModel):
+    student_id: int
+    student_name: str
+    student_status: str  # in_progress | submitted
+    teacher_accepted: bool
+
+
+class AssignmentTeacherItem(BaseModel):
+    id: int
+    subject: str
+    description: str
+    group_id: int
+    group_name: str
+    created_at: datetime.datetime
+    students: List[AssignmentStudentStatusRow]
+
+
+class StudentAssignmentItem(BaseModel):
+    id: int
+    subject: str
+    description: str
+    prepod_name: str
+    created_at: datetime.datetime
+    student_status: str
+
+
+class StudentAssignmentStatusUpdate(BaseModel):
+    student_status: str  # in_progress | submitted
+
+
+class TeacherAssignmentReview(BaseModel):
+    student_id: int
+    accept: bool  # True = засчитать, False = вернуть в «в процессе»
 
 # --- 4. FASTAPI ПРИЛОЖЕНИЕ И РУЧКИ ---
 
@@ -269,6 +386,22 @@ def get_student_schedule(
     return sorted(result, key=lambda s: s.time)
 
 
+@app.get("/api/student/{student_id}/group", response_model=StudentGroupNameResponse)
+def get_student_group_name(
+    student_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(verify_student),
+):
+    """Название учебной группы студента (для шапки интерфейса)."""
+    link = db.query(StudentGroup).filter(StudentGroup.student_id == student_id).first()
+    if not link:
+        raise HTTPException(status_code=404, detail="Студент не привязан к группе")
+    g = db.query(Group).filter(Group.id == link.group_id).first()
+    if not g:
+        raise HTTPException(status_code=404, detail="Группа не найдена")
+    return StudentGroupNameResponse(group_name=g.name_group)
+
+
 # --- ОЦЕНКИ И УВЕДОМЛЕНИЯ ---
 
 @app.get("/api/prepod/{prepod_id}/students", response_model=List[StudentOption])
@@ -367,6 +500,267 @@ def mark_all_notifications_read(student_id: int, db: Session = Depends(get_db), 
     db.query(Notification).filter(Notification.student_id == student_id, Notification.is_read == 0).update(
         {Notification.is_read: 1}
     )
+    db.commit()
+    return {"ok": True}
+
+
+# --- ЗАДАНИЯ (преподаватель / студент) ---
+
+
+def _get_or_create_assignment_state(
+    db: Session, assignment_id: int, student_id: int
+) -> AssignmentStudentState:
+    row = (
+        db.query(AssignmentStudentState)
+        .filter(
+            AssignmentStudentState.assignment_id == assignment_id,
+            AssignmentStudentState.student_id == student_id,
+        )
+        .first()
+    )
+    if not row:
+        row = AssignmentStudentState(
+            assignment_id=assignment_id,
+            student_id=student_id,
+            student_status="in_progress",
+        )
+        db.add(row)
+        db.flush()
+    return row
+
+
+@app.get("/api/prepod/{prepod_id}/assignment-meta", response_model=AssignmentMetaResponse)
+def get_assignment_meta(
+    prepod_id: int,
+    db: Session = Depends(get_db),
+    prepod: User = Depends(get_prepod),
+):
+    if prepod.id != prepod_id:
+        raise HTTPException(status_code=403, detail="Доступ запрещён")
+    rows = db.query(Schedule).filter(Schedule.prepod_id == prepod_id).all()
+    subjects = sorted({r.subject for r in rows if r.subject})
+    group_ids = sorted({r.group_id for r in rows if r.group_id})
+    groups_out: List[GroupOption] = []
+    for gid in group_ids:
+        g = db.query(Group).filter(Group.id == gid).first()
+        if g:
+            groups_out.append(GroupOption(id=g.id, name=g.name_group))
+    return AssignmentMetaResponse(subjects=subjects, groups=groups_out)
+
+
+@app.post("/api/prepod/assignments")
+def create_assignment(
+    data: AssignmentCreate,
+    db: Session = Depends(get_db),
+    prepod: User = Depends(get_prepod),
+):
+    """Опубликовать задание для группы по предмету из расписания."""
+    has_slot = (
+        db.query(Schedule)
+        .filter(
+            Schedule.prepod_id == prepod.id,
+            Schedule.group_id == data.group_id,
+            Schedule.subject == data.subject,
+        )
+        .first()
+    )
+    if not has_slot:
+        raise HTTPException(
+            status_code=400,
+            detail="Нет занятий по этому предмету у выбранной группы в расписании",
+        )
+    if not data.description.strip():
+        raise HTTPException(status_code=400, detail="Введите описание задания")
+    a = Assignment(
+        prepod_id=prepod.id,
+        group_id=data.group_id,
+        subject=data.subject.strip(),
+        description=data.description.strip(),
+        published=1,
+    )
+    db.add(a)
+    db.commit()
+    db.refresh(a)
+    return {"id": a.id, "ok": True}
+
+
+@app.get("/api/prepod/{prepod_id}/assignments", response_model=List[AssignmentTeacherItem])
+def list_prepod_assignments(
+    prepod_id: int,
+    db: Session = Depends(get_db),
+    prepod: User = Depends(get_prepod),
+):
+    if prepod.id != prepod_id:
+        raise HTTPException(status_code=403, detail="Доступ запрещён")
+    items = (
+        db.query(Assignment)
+        .filter(Assignment.prepod_id == prepod_id)
+        .order_by(Assignment.created_at.desc())
+        .all()
+    )
+    out: List[AssignmentTeacherItem] = []
+    for a in items:
+        g = db.query(Group).filter(Group.id == a.group_id).first()
+        group_name = g.name_group if g else ""
+        links = (
+            db.query(StudentGroup, User)
+            .join(User, StudentGroup.student_id == User.id)
+            .filter(StudentGroup.group_id == a.group_id, User.role == "student")
+            .all()
+        )
+        students: List[AssignmentStudentStatusRow] = []
+        for _sg, u in links:
+            st = (
+                db.query(AssignmentStudentState)
+                .filter(
+                    AssignmentStudentState.assignment_id == a.id,
+                    AssignmentStudentState.student_id == u.id,
+                )
+                .first()
+            )
+            status_s = st.student_status if st else "in_progress"
+            accepted = bool(st and (st.teacher_accepted == 1))
+            students.append(
+                AssignmentStudentStatusRow(
+                    student_id=u.id,
+                    student_name=u.name,
+                    student_status=status_s,
+                    teacher_accepted=accepted,
+                )
+            )
+        students.sort(key=lambda x: x.student_name)
+        out.append(
+            AssignmentTeacherItem(
+                id=a.id,
+                subject=a.subject,
+                description=a.description,
+                group_id=a.group_id,
+                group_name=group_name,
+                created_at=a.created_at,
+                students=students,
+            )
+        )
+    return out
+
+
+@app.get("/api/student/{student_id}/assignments", response_model=List[StudentAssignmentItem])
+def list_student_assignments(
+    student_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(verify_student),
+):
+    link = db.query(StudentGroup).filter(StudentGroup.student_id == student_id).first()
+    if not link:
+        raise HTTPException(status_code=404, detail="Студент не привязан к группе")
+    rows = (
+        db.query(Assignment)
+        .filter(Assignment.group_id == link.group_id, Assignment.published == 1)
+        .order_by(Assignment.created_at.desc())
+        .all()
+    )
+    result: List[StudentAssignmentItem] = []
+    for a in rows:
+        st = (
+            db.query(AssignmentStudentState)
+            .filter(
+                AssignmentStudentState.assignment_id == a.id,
+                AssignmentStudentState.student_id == student_id,
+            )
+            .first()
+        )
+        if st and st.teacher_accepted == 1:
+            continue
+        prep = db.query(User).filter(User.id == a.prepod_id).first()
+        result.append(
+            StudentAssignmentItem(
+                id=a.id,
+                subject=a.subject,
+                description=a.description,
+                prepod_name=prep.name if prep else "",
+                created_at=a.created_at,
+                student_status=st.student_status if st else "in_progress",
+            )
+        )
+    return result
+
+
+@app.patch("/api/student/{student_id}/assignments/{assignment_id}/status")
+def patch_student_assignment_status(
+    student_id: int,
+    assignment_id: int,
+    data: StudentAssignmentStatusUpdate,
+    db: Session = Depends(get_db),
+    _: User = Depends(verify_student),
+):
+    if data.student_status not in ("in_progress", "submitted"):
+        raise HTTPException(status_code=400, detail="Статус: in_progress или submitted")
+    a = db.query(Assignment).filter(Assignment.id == assignment_id).first()
+    if not a:
+        raise HTTPException(status_code=404, detail="Задание не найдено")
+    link = db.query(StudentGroup).filter(StudentGroup.student_id == student_id).first()
+    if not link or link.group_id != a.group_id:
+        raise HTTPException(status_code=403, detail="Задание не для вашей группы")
+    row = _get_or_create_assignment_state(db, assignment_id, student_id)
+    if row.teacher_accepted == 1:
+        raise HTTPException(status_code=400, detail="Задание уже засчитано")
+    row.student_status = data.student_status
+    db.commit()
+    return {"ok": True}
+
+
+@app.patch("/api/prepod/assignments/{assignment_id}/review")
+def review_assignment_student(
+    assignment_id: int,
+    data: TeacherAssignmentReview,
+    db: Session = Depends(get_db),
+    prepod: User = Depends(get_prepod),
+):
+    a = db.query(Assignment).filter(Assignment.id == assignment_id).first()
+    if not a:
+        raise HTTPException(status_code=404, detail="Задание не найдено")
+    if a.prepod_id != prepod.id:
+        raise HTTPException(status_code=403, detail="Это не ваше задание")
+    row = (
+        db.query(AssignmentStudentState)
+        .filter(
+            AssignmentStudentState.assignment_id == assignment_id,
+            AssignmentStudentState.student_id == data.student_id,
+        )
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Нет статуса по этому студенту")
+    if row.student_status != "submitted":
+        raise HTTPException(
+            status_code=400,
+            detail="Студент ещё не отметил задание как сданное",
+        )
+    if data.accept:
+        row.teacher_accepted = 1
+        msg = f"Домашнее задание «{a.subject}»: статус изменён — работа засчитана."
+        n = Notification(
+            student_id=data.student_id,
+            grade_id=None,
+            assignment_id=assignment_id,
+            message=msg,
+            is_read=0,
+        )
+        db.add(n)
+    else:
+        row.student_status = "in_progress"
+        row.teacher_accepted = None
+        msg = (
+            f"Домашнее задание «{a.subject}»: статус изменён — не засчитано. "
+            f"Верните задание в работу и при необходимости снова отметьте сдачу."
+        )
+        n = Notification(
+            student_id=data.student_id,
+            grade_id=None,
+            assignment_id=assignment_id,
+            message=msg,
+            is_read=0,
+        )
+        db.add(n)
     db.commit()
     return {"ok": True}
 

@@ -4,7 +4,8 @@ import { fetchSchedule } from '../api'
 import type { ScheduleItem } from '../types'
 import './Schedule.css'
 
-const DAYS = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье']
+/** Пн–Вс (индекс совпадает с API: 0 = понедельник) */
+const DAYS = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс']
 
 interface Props {
   userId: number
@@ -46,7 +47,7 @@ export default function Schedule({ userId, userRole }: Props) {
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
           >
-            {name.slice(0, 2)}
+            {name}
           </motion.button>
         ))}
       </motion.div>

@@ -1,4 +1,13 @@
-import type { User, ScheduleItem, Grade, StudentOption, Notification } from './types'
+import type {
+  User,
+  ScheduleItem,
+  Grade,
+  StudentOption,
+  Notification,
+  AssignmentMeta,
+  AssignmentTeacherItem,
+  StudentAssignmentItem,
+} from './types'
 
 const API = '/api'
 
@@ -54,6 +63,12 @@ export async function createGrade(userId: number, data: { student_id: number; su
   return res.json()
 }
 
+export async function fetchStudentGroupName(userId: number): Promise<{ group_name: string }> {
+  const res = await fetch(`${API}/student/${userId}/group`, { headers: headers(userId) })
+  if (!res.ok) throw new Error('Не удалось загрузить группу')
+  return res.json()
+}
+
 export async function fetchStudentGrades(userId: number): Promise<Grade[]> {
   const res = await fetch(`${API}/student/${userId}/grades`, { headers: headers(userId) })
   if (!res.ok) throw new Error('Ошибка загрузки оценок')
@@ -86,4 +101,75 @@ export async function markAllNotificationsRead(userId: number): Promise<void> {
     method: 'PATCH',
     headers: headers(userId),
   })
+}
+
+// --- Задания ---
+
+export async function fetchAssignmentMeta(userId: number): Promise<AssignmentMeta> {
+  const res = await fetch(`${API}/prepod/${userId}/assignment-meta`, { headers: headers(userId) })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail || 'Ошибка загрузки предметов и групп')
+  }
+  return res.json()
+}
+
+export async function createAssignment(
+  userId: number,
+  data: { subject: string; description: string; group_id: number }
+): Promise<{ id: number; ok: boolean }> {
+  const res = await fetch(`${API}/prepod/assignments`, {
+    method: 'POST',
+    headers: headers(userId),
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail || 'Не удалось опубликовать задание')
+  }
+  return res.json()
+}
+
+export async function fetchTeacherAssignments(userId: number): Promise<AssignmentTeacherItem[]> {
+  const res = await fetch(`${API}/prepod/${userId}/assignments`, { headers: headers(userId) })
+  if (!res.ok) throw new Error('Ошибка загрузки заданий')
+  return res.json()
+}
+
+export async function fetchStudentAssignments(userId: number): Promise<StudentAssignmentItem[]> {
+  const res = await fetch(`${API}/student/${userId}/assignments`, { headers: headers(userId) })
+  if (!res.ok) throw new Error('Ошибка загрузки заданий')
+  return res.json()
+}
+
+export async function patchStudentAssignmentStatus(
+  userId: number,
+  assignmentId: number,
+  data: { student_status: 'in_progress' | 'submitted' }
+): Promise<void> {
+  const res = await fetch(`${API}/student/${userId}/assignments/${assignmentId}/status`, {
+    method: 'PATCH',
+    headers: headers(userId),
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail || 'Не удалось сохранить статус')
+  }
+}
+
+export async function reviewAssignment(
+  userId: number,
+  assignmentId: number,
+  data: { student_id: number; accept: boolean }
+): Promise<void> {
+  const res = await fetch(`${API}/prepod/assignments/${assignmentId}/review`, {
+    method: 'PATCH',
+    headers: headers(userId),
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail || 'Ошибка проверки')
+  }
 }

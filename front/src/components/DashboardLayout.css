@@ -88,6 +88,23 @@
   color: var(--text-muted);
 }
 
+.user-name-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.user-group-badge {
+  padding: 0.15rem 0.55rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--accent);
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  border-radius: 8px;
+}
+
 .role-badge {
   padding: 0.2rem 0.6rem;
   background: rgba(59, 130, 246, 0.14);

@@ -1,0 +1,139 @@
+.student-assignments-page {
+  max-width: 560px;
+}
+
+.assignments-page-title {
+  margin: 0 0 0.5rem;
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.assignments-page-hint {
+  margin: 0 0 1.5rem;
+  font-size: 0.95rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.assignments-loading,
+.assignments-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 3rem 1rem;
+  color: var(--text-muted);
+}
+
+.assignments-error {
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 10px;
+  color: #b42318;
+  font-size: 0.95rem;
+}
+
+.assignments-feed {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.assignment-card {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 1.25rem 1.5rem;
+  box-shadow: 0 12px 28px -14px rgba(45, 95, 174, 0.35);
+}
+
+.assignment-card-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.35rem;
+}
+
+.assignment-subject {
+  font-weight: 700;
+  font-size: 1.15rem;
+  color: var(--text);
+}
+
+.assignment-date {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.assignment-prepod {
+  margin: 0 0 0.75rem;
+  font-size: 0.9rem;
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.assignment-desc {
+  margin: 0 0 1.5rem;
+  white-space: pre-wrap;
+  line-height: 1.5;
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.assignment-stages {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.assignment-stages-label {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.assignment-stage-btns {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.stage-btn {
+  padding: 0.5rem 1rem;
+  font-size: 0.95rem;
+  font-family: inherit;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: #f7fbff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s, color 0.2s;
+}
+
+.stage-btn:hover:not(:disabled) {
+  border-color: rgba(59, 130, 246, 0.45);
+  color: var(--text);
+}
+
+.stage-btn.active {
+  color: #fff;
+  background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+  border-color: transparent;
+}
+
+.stage-btn:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.spinner {
+  font-size: 1.75rem;
+  display: inline-block;
+}

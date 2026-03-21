@@ -1,19 +1,28 @@
 import { useEffect, useState, useRef } from 'react'
 import { useNavigate, NavLink } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { fetchUnreadCount, markNotificationRead, markAllNotificationsRead } from '../api'
+import { markNotificationRead, markAllNotificationsRead } from '../api'
 import type { User, Notification } from '../types'
 import './DashboardLayout.css'
 
 interface Props {
   user: User
+  /** Только для студента: название группы из API */
+  studentGroupName?: string | null
   notifications: Notification[]
   unreadCount: number
   onRefreshNotifications: () => void
   children: React.ReactNode
 }
 
-export default function DashboardLayout({ user, notifications, unreadCount, onRefreshNotifications, children }: Props) {
+export default function DashboardLayout({
+  user,
+  studentGroupName,
+  notifications,
+  unreadCount,
+  onRefreshNotifications,
+  children,
+}: Props) {
   const navigate = useNavigate()
   const notifRef = useRef<HTMLDivElement>(null)
   const [showNotifs, setShowNotifs] = useState(false)
@@ -45,10 +54,12 @@ export default function DashboardLayout({ user, notifications, unreadCount, onRe
     user.role === 'prepod'
       ? [
           { to: '/schedule', label: 'Расписание' },
+          { to: '/assignments', label: 'Задания' },
           { to: '/grades/add', label: 'Выставить оценку' },
         ]
       : [
           { to: '/schedule', label: 'Расписание' },
+          { to: '/assignments', label: 'Задания' },
           { to: '/grades', label: 'Оценки' },
         ]
 
@@ -78,7 +89,12 @@ export default function DashboardLayout({ user, notifications, unreadCount, onRe
             ))}
           </nav>
           <p className="user-info">
-            <span>{user.name}</span>
+            <span className="user-name-row">
+              <span>{user.name}</span>
+              {user.role === 'student' && studentGroupName ? (
+                <span className="user-group-badge">{studentGroupName}</span>
+              ) : null}
+            </span>
             <span className="role-badge">{user.role === 'prepod' ? 'Преподаватель' : 'Студент'}</span>
           </p>
         </div>

@@ -144,15 +144,6 @@ export default function Login() {
           </motion.button>
         </form>
       </motion.div>
-
-      <motion.p
-        className="hint"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.8 }}
-      >
-        Студент: student1 / 123 · Преподаватель: prepod1 / 123
-      </motion.p>
     </div>
   )
 }
