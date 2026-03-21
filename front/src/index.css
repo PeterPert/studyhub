@@ -1,17 +1,17 @@
 :root {
-  --bg: #0c0e14;
-  --bg-card: #141922;
-  --bg-elevated: #1a1f2e;
-  --border: rgba(99, 102, 241, 0.15);
-  --text: #f0f2f5;
-  --text-muted: #8b92a8;
-  --accent: #6366f1;
-  --accent-hover: #818cf8;
-  --accent-glow: rgba(99, 102, 241, 0.4);
+  --bg: #f4f8ff;
+  --bg-card: #ffffff;
+  --bg-elevated: #edf4ff;
+  --border: rgba(30, 78, 154, 0.14);
+  --text: #1f3557;
+  --text-muted: #5f7ca6;
+  --accent: #2d5fae;
+  --accent-hover: #3f72c7;
+  --accent-glow: rgba(77, 144, 234, 0.25);
   --success: #22c55e;
   --error: #ef4444;
-  --gradient-start: #0ea5e9;
-  --gradient-end: #6366f1;
+  --gradient-start: #7bc3ff;
+  --gradient-end: #3b82f6;
   --radius: 14px;
   --font: 'Outfit', system-ui, sans-serif;
 }
@@ -28,7 +28,7 @@ html {
 body {
   margin: 0;
   font-family: var(--font);
-  background: var(--bg);
+  background: linear-gradient(180deg, #f8fbff 0%, var(--bg) 100%);
   color: var(--text);
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;

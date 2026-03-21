@@ -16,7 +16,7 @@
   font-family: inherit;
   font-weight: 500;
   color: var(--text-muted);
-  background: rgba(20, 25, 46, 0.6);
+  background: rgba(255, 255, 255, 0.88);
   border: 1px solid var(--border);
   border-radius: 10px;
   cursor: pointer;
@@ -29,19 +29,19 @@
 }
 
 .schedule-day-tabs .tab.active {
-  color: white;
+  color: #ffffff;
   background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
   border-color: transparent;
   box-shadow: 0 4px 15px var(--accent-glow);
 }
 
 .schedule-card {
-  background: rgba(20, 25, 46, 0.7);
+  background: rgba(255, 255, 255, 0.9);
   backdrop-filter: blur(20px);
   border: 1px solid var(--border);
   border-radius: 20px;
   overflow: hidden;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 20px 35px -18px rgba(45, 95, 174, 0.28);
   min-height: 280px;
 }
 
@@ -68,13 +68,13 @@
   font-size: 0.85rem;
   font-weight: 500;
   color: var(--text-muted);
-  background: rgba(0, 0, 0, 0.2);
+  background: rgba(123, 195, 255, 0.14);
   border-bottom: 1px solid var(--border);
 }
 
 .schedule-table td {
   padding: 1rem 1.25rem;
-  border-bottom: 1px solid rgba(99, 102, 241, 0.08);
+  border-bottom: 1px solid rgba(59, 130, 246, 0.1);
   font-size: 1rem;
 }
 
@@ -83,7 +83,7 @@
 }
 
 .schedule-table tbody tr:hover td {
-  background: rgba(99, 102, 241, 0.05);
+  background: rgba(59, 130, 246, 0.05);
 }
 
 .time-badge {
