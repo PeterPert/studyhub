@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Расписание</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; margin: 0; min-height: 100vh; background: #1a1a2e; color: #eee; padding: 1.5rem; }
+    .header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem; }
+    h1 { margin: 0; font-size: 1.4rem; }
+    .user { color: #a0a0a0; font-size: 0.95rem; }
+    a { color: #e94560; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    select { padding: 0.5rem 0.8rem; border-radius: 8px; background: #16213e; border: 1px solid #3a3a5c; color: #eee; font-size: 1rem; }
+    .card { background: #16213e; border-radius: 12px; padding: 1.5rem; margin-bottom: 1rem; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 0.6rem 0.8rem; text-align: left; border-bottom: 1px solid #2a2a4a; }
+    th { color: #a0a0a0; font-weight: 500; font-size: 0.9rem; }
+    .empty { color: #6a6a8a; font-style: italic; padding: 2rem; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <h1>Расписание</h1>
+      <p class="user"><span id="userName"></span> · <a href="/app/" onclick="sessionStorage.removeItem('user')">Выйти</a></p>
+    </div>
+    <select id="daySelect">
+      <option value="0">Понедельник</option>
+      <option value="1">Вторник</option>
+      <option value="2">Среда</option>
+      <option value="3">Четверг</option>
+      <option value="4">Пятница</option>
+      <option value="5">Суббота</option>
+      <option value="6">Воскресенье</option>
+    </select>
+  </div>
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>Время</th>
+          <th>Предмет</th>
+          <th>Аудитория</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+  </div>
+  <script>
+    const API = window.location.origin;
+    const userStr = sessionStorage.getItem('user');
+    if (!userStr) { location.href = '/app/'; }
+    const user = JSON.parse(userStr);
+
+    if (user.role !== 'student' && user.role !== 'prepod') {
+      sessionStorage.removeItem('user');
+      location.href = '/app/';
+    }
+
+    document.getElementById('userName').textContent = user.name;
+
+    const daySelect = document.getElementById('daySelect');
+    const tableBody = document.getElementById('tableBody');
+    const today = new Date().getDay();
+    daySelect.value = String(today === 0 ? 6 : today - 1);
+
+    async function loadSchedule() {
+      const day = parseInt(daySelect.value, 10);
+      const url = user.role === 'prepod'
+        ? `${API}/api/schedule/teacher/${user.id}?day_of_week=${day}`
+        : `${API}/api/schedule/student/${user.id}?day_of_week=${day}`;
+      try {
+        const r = await fetch(url);
+        if (!r.ok) throw new Error('Ошибка загрузки');
+        const list = await r.json();
+        tableBody.innerHTML = list.length === 0
+          ? '<tr><td colspan="3" class="empty">Нет пар на этот день</td></tr>'
+          : list.map(s => `
+              <tr>
+                <td>${s.time}</td>
+                <td>${s.subject}</td>
+                <td>${s.classroom}</td>
+              </tr>
+            `).join('');
+      } catch (e) {
+        tableBody.innerHTML = '<tr><td colspan="3" class="empty">Ошибка загрузки расписания</td></tr>';
+      }
+    }
+
+    daySelect.onchange = loadSchedule;
+    loadSchedule();
+  </script>
+</body>
+</html>

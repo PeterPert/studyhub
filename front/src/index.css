@@ -1,0 +1,39 @@
+:root {
+  --bg: #f4f8ff;
+  --bg-card: #ffffff;
+  --bg-elevated: #edf4ff;
+  --border: rgba(30, 78, 154, 0.14);
+  --text: #1f3557;
+  --text-muted: #5f7ca6;
+  --accent: #2d5fae;
+  --accent-hover: #3f72c7;
+  --accent-glow: rgba(77, 144, 234, 0.25);
+  --success: #22c55e;
+  --error: #ef4444;
+  --gradient-start: #7bc3ff;
+  --gradient-end: #3b82f6;
+  --radius: 14px;
+  --font: 'Outfit', system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 16px;
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  background: linear-gradient(180deg, #f8fbff 0%, var(--bg) 100%);
+  color: var(--text);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  min-height: 100vh;
+}

@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/api.ts","./src/main.tsx","./src/types.ts","./src/components/dashboardlayout.tsx","./src/pages/addgrade.tsx","./src/pages/dashboard.tsx","./src/pages/grades.tsx","./src/pages/login.tsx","./src/pages/schedule.tsx","./src/pages/studentassignments.tsx","./src/pages/teacherassignments.tsx"],"version":"5.6.3"}
