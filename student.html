@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Student</title>
+</head>
+<body>
+
+<h2>Расписание студента</h2>
+
+<button onclick="loadSchedule()">Загрузить расписание</button>
+<button onclick="logout()">Выйти</button>
+
+<pre id="result"></pre>
+
+<script>
+const user = JSON.parse(localStorage.getItem("user"));
+
+if (!user || user.role !== "student") {
+    window.location.href = "index.html";
+}
+
+async function loadSchedule() {
+    const res = await fetch(`http://127.0.0.1:8000/api/schedule/student/${user.id}`);
+    const data = await res.json();
+
+    document.getElementById("result").textContent = JSON.stringify(data, null, 2);
+}
+
+function logout() {
+    localStorage.removeItem("user");
+    window.location.href = "index.html";
+}
+</script>
+
+</body>
+</html>

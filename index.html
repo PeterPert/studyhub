@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Login</title>
+</head>
+<body>
+
+<h2>Вход</h2>
+
+<input id="login" placeholder="Логин"><br><br>
+<input id="password" placeholder="Пароль" type="password"><br><br>
+
+<button onclick="login()">Войти</button>
+
+<script>
+async function login() {
+    const res = await fetch("http://127.0.0.1:8000/api/login", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+            login: document.getElementById("login").value,
+            password: document.getElementById("password").value
+        })
+    });
+
+    if (!res.ok) {
+        alert("Ошибка логина");
+        return;
+    }
+
+    const user = await res.json();
+
+    // сохраняем пользователя
+    localStorage.setItem("user", JSON.stringify(user));
+
+    // редирект
+    if (user.role === "prepod") {
+        window.location.href = "teacher.html";
+    } else if (user.role === "student") {
+        window.location.href = "student.html";
+    } else {
+        alert("Неизвестная роль");
+    }
+}
+</script>
+
+</body>
+</html>
