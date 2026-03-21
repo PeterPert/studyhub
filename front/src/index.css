@@ -1,0 +1,39 @@
+:root {
+  --bg: #0c0e14;
+  --bg-card: #141922;
+  --bg-elevated: #1a1f2e;
+  --border: rgba(99, 102, 241, 0.15);
+  --text: #f0f2f5;
+  --text-muted: #8b92a8;
+  --accent: #6366f1;
+  --accent-hover: #818cf8;
+  --accent-glow: rgba(99, 102, 241, 0.4);
+  --success: #22c55e;
+  --error: #ef4444;
+  --gradient-start: #0ea5e9;
+  --gradient-end: #6366f1;
+  --radius: 14px;
+  --font: 'Outfit', system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 16px;
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  min-height: 100vh;
+}
