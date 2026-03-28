@@ -1,9 +1,11 @@
+import logging
 from pathlib import Path
 
-from fastapi import FastAPI, Depends, HTTPException, status, Header
+from fastapi import FastAPI, Depends, HTTPException, Request, status, Header
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy.exc import OperationalError
 from sqlalchemy import (
     create_engine,
     Column,
@@ -24,18 +26,29 @@ import datetime
 import os
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
-# --- 1. НАСТРОЙКА БАЗЫ ДАННЫХ (PostgreSQL) ---
-# Создай .env с: DATABASE_URL=postgresql://пользователь:пароль@localhost:5432/schedule_db
-SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL")
+logger = logging.getLogger(__name__)
+
+# --- 1. БАЗА ДАННЫХ ---
+# PostgreSQL: DATABASE_URL=postgresql://...
+# Если переменная не задана — локальный SQLite (файл back/studyhub_local.db), чтобы API и бот работали без установки PostgreSQL.
+_BACK_DIR = Path(__file__).resolve().parent
+_SQLITE_FILE = _BACK_DIR / "studyhub_local.db"
+SQLALCHEMY_DATABASE_URL = (os.getenv("DATABASE_URL") or "").strip()
 if not SQLALCHEMY_DATABASE_URL:
-    raise ValueError(
-        "Задай DATABASE_URL в .env. Пример:\n"
-        "  DATABASE_URL=postgresql://postgres:stef4587@localhost:5432/schedule_db\n"
-        "На macOS (Homebrew) часто работает: postgresql://localhost:5432/schedule_db"
-    )
-engine = create_engine(SQLALCHEMY_DATABASE_URL)
+    SQLALCHEMY_DATABASE_URL = f"sqlite:///{_SQLITE_FILE.as_posix()}"
+    logger.info("DATABASE_URL не задан — используется SQLite: %s", _SQLITE_FILE)
+
+_IS_SQLITE = SQLALCHEMY_DATABASE_URL.startswith("sqlite")
+_engine_kw: dict = {}
+if _IS_SQLITE:
+    _engine_kw["connect_args"] = {"check_same_thread": False}
+else:
+    _engine_kw["pool_pre_ping"] = True
+
+engine = create_engine(SQLALCHEMY_DATABASE_URL, **_engine_kw)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -124,7 +137,9 @@ Base.metadata.create_all(bind=engine)
 
 
 def _migrate_postgres_notifications():
-    """Существующие БД: сделать grade_id nullable и добавить assignment_id."""
+    """Существующие БД PostgreSQL: сделать grade_id nullable и добавить assignment_id."""
+    if _IS_SQLITE:
+        return
     try:
         with engine.begin() as conn:
             conn.execute(text("ALTER TABLE notifications ALTER COLUMN grade_id DROP NOT NULL"))
@@ -280,6 +295,23 @@ class TeacherAssignmentReview(BaseModel):
 
 app = FastAPI(title="Schedule API")
 
+
+@app.exception_handler(OperationalError)
+async def db_operational_error_handler(request: Request, exc: OperationalError) -> JSONResponse:
+    logger.exception("Ошибка подключения к БД: %s", exc)
+    return JSONResponse(
+        status_code=503,
+        content={
+            "detail": (
+                "База данных недоступна. Если в .env указан PostgreSQL — запустите службу PostgreSQL "
+                "или проверьте DATABASE_URL. Для локальной работы без PostgreSQL удалите строку DATABASE_URL "
+                "из .env — тогда будет использоваться файл back/studyhub_local.db (SQLite). "
+                "После смены БД выполните: python seed.py"
+            )
+        },
+    )
+
+
 # CORS для фронтенда
 app.add_middleware(
     CORSMiddleware,
@@ -332,6 +364,14 @@ app.mount("/app", StaticFiles(directory=str(STATIC_DIR), html=True), name="stati
 @app.get("/")
 def root():
     return RedirectResponse(url="/app/")
+
+
+@app.get("/api/health")
+def health_check(db: Session = Depends(get_db)):
+    """Проверка, что API и база отвечают (удобно для отладки бота и деплоя)."""
+    db.execute(text("SELECT 1"))
+    return {"ok": True, "database": "sqlite" if _IS_SQLITE else "postgresql"}
+
 
 @app.post("/api/login", response_model=LoginResponse)
 def login(user_data: LoginRequest, db: Session = Depends(get_db)):
