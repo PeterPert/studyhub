@@ -1,0 +1,20 @@
+# Node modules
+node_modules/
+front/node_modules/
+backend/node_modules/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+.venv/
+
+# Build
+dist/
+build/
+.vite/
+
+# IDE
+.vscode/
+.idea/
